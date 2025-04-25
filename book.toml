@@ -1,0 +1,9 @@
+[book]
+authors = ["duykhanh471"]
+language = "vi"
+multilingual = false
+src = "src"
+title = "Tu hành Khoa học máy tính"
+
+[build]
+build-dir = "public"

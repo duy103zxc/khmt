@@ -1,0 +1,106 @@
+
+- The power of stateful computational objects comes at a price: the loss of referential transparency.
+- This gives rise to a thicket of questions about sameness and change, and we had to create a more intricate evaluation model.
+- The central issue is that by introducing assignment we are forced to admit _time_ in the computational model.
+- We can go further in structuring the model to match the world: in the physical world, we perceive simultaneous changes.
+- We want computational processes executing _concurrently_.
+- Writing programs this way forces us to avoid inessential timing constraints, making the program more modular.
+- It can also provide a speed advantage on multicore computers.
+- The complexities introduced by assignment become even more problematic in the presence of concurrency.
+
+## 3.4.1 The Nature of Time in Concurrent Systems⁠
+
+- On the surface, time is straightforward: it is an ordering.
+- Two events either occur in one order, or the other, or simultaneously.
+- Consider `(set! balance (- balance amount))`. There are three steps: accessing the value of `balance`, computing the new balance, and setting `balance` to this value.
+- Two such expressions executed concurrently on the same `balance` variable could have their three steps interleaved.
+- The general problem is that, when concurrent processes share a state variable, they may try to change it at the same time.
+
+> To quote some graffiti seen on a Cambridge building wall: “Time is a device that was invented to keep everything from happening at once.” (Footnote 3.35)
+
+### Correct behavior of concurrent programs
+
+- We already know we have to be careful about order with `set!`.
+- With concurrent programs we must be especially careful.
+- A very stringent restriction to ensure correctness: disallow changing more than one state variable at a time.
+- A less stringent restriction: to ensure that the system produces the same result as if the processes had run sequentially in some order (we don’t specify a particular order).
+- Concurrent programs are inherently _nondeterministic_, because we don’t what order of execution its result is equivalent to, so there is a set of possible values it could take.
+
+## 3.4.2 Mechanisms for Controlling Concurrency⁠
+
+- If one process has three ordered events (a,b,c)(a,b,c) and another, running concurrently, has three ordered events (x,y,z),(x,y,z)\\htmlClass{math-punctuation}{\\text{,}} then there are twenty ways of interleaving them.
+- The programmer would have to consider the results in all twenty cases to be confident in the program.
+- A better approach is to use mechanisms to constrain interleaving to ensure correct behavior.
+
+### Serializing access to shared state
+
+- Serialization groups procedures into sets such and prevents multiple procedures in the same set from executing concurrently.
+- We can use this to control access to shared variables.
+- Before, assignments based on a state variables current value were problematic. We could solve this with the set { `get-value`, `set-value!`, and `swap-value!`} where the latter is defined like so:
+
+```
+(define (swap-value! f)
+  (set-value! (f (get-value))))
+```
+
+### Serializers in Scheme
+
+- Suppose we have a procedure `parallel-execute` that takes a variable number of arguments that are procedures of no arguments, and executes them all concurrently.
+- We construct _serializers_ with `(make-serializer)`.
+- A serializer takes a procedure as its argument and returns a serialized procedure that behaves like the original.
+- Calls to the same serializer return procedures in the same set.
+
+### Complexity of using multiple shared resources
+
+- Serializers are powerful, and easy to use for one resource.
+- Things get much more difficult with multiple shared resources.
+- Suppose we want to swap the balances in two bank accounts:
+
+```
+(define (exchange acc1 acc2)
+  (let ((diff (- (acc1 'balance) (acc2 'balance))))
+    ((acc1 'withdraw) diff)
+    ((acc2 'deposit) diff)))
+```
+
+- Serializing deposits and withdrawals themselves is not enough to ensure correctness.
+- The exchange comprises four individually serialized steps, and these may interleave with a concurrent process.
+- One solution is to expose the serializer from `make-account`, and use that to serialize the entire exchanging procedure.
+- We would have to manually serialize deposits, but this would give us the flexibility to serialize the exchanging procedure.
+
+### Implementing serializers
+
+- Serializers are implemented in terms of the primitive _mutex_.
+- A mutex can be _acquired_ and it can be _released_.
+- Once acquired, no other acquire operations can proceed until the mutex is released.
+- Each serializer has an associated mutex.
+- A serialized procedure (created with `(s proc)` where `s` is a serializer) does the following when it is run:
+
+  - acquire the mutex,
+  - run the procedure `proc`,
+  - release the mutex.
+- The mutex is a mutable object, represented by a _cell_ (a one-element list). It holds a boolean value, indicating whether or not it is currently locked.
+- To acquire the mutex, we test the cell. We wait until it is false, then we set it to true and proceed.
+- To release the mutex, we set its contents to false.
+
+### Deadlock
+
+- Even with a proper implementation of mutexes and serializers, we still have a problem with the account exchanging procedure.
+- We serialize the whole procedure with both accounts so that an account may only participate in one exchange at a time.
+- There are two mutexes, so it is possible for something to happen in between acquiring the first and the second.
+- If we exchange `a1` with `a2` and concurrently do the reverse exchange, it is possible for the first process to lock `a1` and the second process to lock `a2`.
+- Now both need to lock the other, but they can’t. This situation is called _deadlock_.
+- In this case, we can fix the problem by locking accounts in a particular order based on a unique identifier.
+- In some cases, it is not possible to avoid deadlock, and we simply have to “back out” and try again.
+
+### Concurrency, time, and communication
+
+- Concurrency can be tricky because it’s not always clear what is meant by “shared state.”
+- It also becomes more complicated in large, distributed systems.
+- The notion of time in concurrency control must be intimately linked to _communication_.
+- There are some parallels with the theory of relativity.
+
+
+
+
+
